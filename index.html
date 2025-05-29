@@ -1,0 +1,207 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investment Outcome Calculator (USDC)</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body>
+    <div class="container max-w-6xl w-full p-8">
+        <div class="spinner" id="spinner"></div>
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-4xl font-bold title">Arbitrage Calculator (USDC) <i class="fas fa-coins text-green-600"></i></h1>
+            <div>
+                <select id="languageToggle" class="mr-4 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white py-2 px-4 rounded-lg">
+                    <option value="en">English</option>
+                    <option value="it">Italiano</option>
+                </select>
+                <button id="themeToggle" class="toggle-btn bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white py-2 px-4 rounded-lg">
+                    <i class="fas fa-moon"></i> Toggle Theme
+                </button>
+                <select id="notificationThreshold" class="ml-4 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white py-2 px-4 rounded-lg">
+                    <option value="5">Notify on ±5% Price Change</option>
+                    <option value="10">Notify on ±10% Price Change</option>
+                </select>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6 mb-6">
+            <div class="input-card" title="Select the base currency (0 to 1,000,000 USDC)">
+                <label for="currency" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-globe mr-1"></i> Currency</label>
+                <select id="currency" class="w-full p-3 border rounded-lg focus:outline-none">
+                    <option value="USDC" selected>USDC</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                </select>
+            </div>
+            <div class="input-card" title="Select the cryptocurrency to invest in">
+                <label for="crypto" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-bitcoin mr-1"></i> Cryptocurrency</label>
+                <select id="crypto" class="w-full p-3 border rounded-lg focus:outline-none">
+                    <option value="BTC">BTC</option>
+                    <option value="ETH">ETH</option>
+                    <option value="BNB">BNB</option>
+                    <option value="DOGE">DOGE</option>
+                    <option value="XRP">XRP</option>
+                </select>
+            </div>
+            <div class="input-card" title="Enter the initial investment amount (0 to 1,000,000 USDC)">
+                <label for="investment" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-coins mr-1"></i> Investment (USDC)</label>
+                <input type="number" id="investment" value="6300" step="0.01" min="0" max="1000000" class="w-full p-3 border rounded-lg focus:outline-none" oninput="if(this.value < 0) this.value = 0; if(this.value > 1000000) this.value = 1000000;">
+            </div>
+            <div class="input-card" title="Enter the buy price per unit (0 to 100,000 USDC)">
+                <label for="buyPrice" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-shopping-cart mr-1"></i> Buy Price (USDC)</label>
+                <input type="number" id="buyPrice" value="2405" step="0.01" min="0" max="100000" class="w-full p-3 border rounded-lg focus:outline-none" oninput="if(this.value < 0) this.value = 0; if(this.value > 100000) this.value = 100000;">
+            </div>
+            <div class="input-card" title="Current sell price fetched from Binance API (read-only)">
+                <label for="sellPrice" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-hand-holding-usd mr-1"></i> Sell Price (USDC)</label>
+                <input type="number" id="sellPrice" value="2650" step="0.01" class="w-full p-3 border rounded-lg focus:outline-none" readonly>
+                <p id="sellPriceError" class="error-message">Error fetching price from Binance API</p>
+                <button id="retryPriceBtn" class="retry-btn"><i class="fas fa-sync-alt mr-1"></i> Retry Price Update</button>
+            </div>
+            <div class="input-card" title="Enter the investment fee percentage (0 to 10%)">
+                <label for="investmentFeePercentage" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-percentage mr-1"></i> Investment Fee (%)</label>
+                <input type="number" id="investmentFeePercentage" value="0.1" step="0.01" min="0" max="10" class="w-full p-3 border rounded-lg focus:outline-none" oninput="if(this.value < 0) this.value = 0; if(this.value > 10) this.value = 10;">
+            </div>
+            <div class="input-card" title="Calculated investment fee based on percentage (read-only)">
+                <label for="investmentFee" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-coins mr-1"></i> Investment Fee (USDC)</label>
+                <input type="number" id="investmentFee" value="0" step="0.01" class="w-full p-3 border rounded-lg focus:outline-none" readonly>
+            </div>
+            <div class="input-card" title="Enter the exit fee percentage (0 to 10%)">
+                <label for="exitFeePercentage" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-percentage mr-1"></i> Exit Fee (%)</label>
+                <input type="number" id="exitFeePercentage" value="0.1" step="0.01" min="0" max="10" class="w-full p-3 border rounded-lg focus:outline-none" oninput="if(this.value < 0) this.value = 0; if(this.value > 10) this.value = 10;">
+            </div>
+            <div class="input-card" title="Calculated exit fee based on percentage (read-only)">
+                <label for="exitFee" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"><i class="fas fa-sign-out-alt mr-1"></i> Exit Fee (USDC)</label>
+                <input type="number" id="exitFee" value="0" step="0.01" class="w-full p-3 border rounded-lg focus:outline-none" readonly>
+            </div>
+        </div>
+        <div class="pairs-table">
+            <h3 class="text-lg font-semibold mb-2">Trading Pairs</h3>
+            <table class="w-full text-center border-collapse">
+                <thead>
+                    <tr>
+                        <th>Currency</th>
+                        <th>Cryptocurrency</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="pairsTableBody"></tbody>
+            </table>
+        </div>
+        <div class="flex justify-between mb-6">
+            <button id="resetBtn" class="toggle-btn bg-red-500 text-white py-2 px-4 rounded-lg"><i class="fas fa-undo mr-1"></i> Reset</button>
+            <div class="space-x-4">
+                <button id="addPairBtn" class="toggle-btn bg-purple-500 text-white py-2 px-4 rounded-lg"><i class="fas fa-plus mr-1"></i> Add Pair</button>
+                <button id="historyBtn" class="toggle-btn bg-blue-500 text-white py-2 px-4 rounded-lg"><i class="fas fa-history mr-1"></i> Show History</button>
+                <button id="exportBtn" class="toggle-btn bg-green-500 text-white py-2 px-4 rounded-lg"><i class="fas fa-file-pdf mr-1"></i> Export to PDF</button>
+                <button id="exportCSVBtn" class="toggle-btn bg-yellow-500 text-white py-2 px-4 rounded-lg"><i class="fas fa-file-csv mr-1"></i> Export to CSV</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-center border-collapse">
+                <thead>
+                    <tr>
+                        <th class="py-4 px-6 text-white">Operation</th>
+                        <th class="py-4 px-6 text-white">Investment (USDC)</th>
+                        <th class="py-4 px-6 text-white">Buy Price (USDC)</th>
+                        <th class="py-4 px-6 text-white">Sell Price (USDC)</th>
+                        <th class="py-4 px-6 text-white">Profit/Loss per Trade (USDC)</th>
+                        <th class="py-4 px-6 text-white">Profit/Loss Percentage (%)</th>
+                        <th class="py-4 px-6 text-white">Total Take-Home (USDC)</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+            </table>
+            <div class="mt-4">
+                <select id="operationsFilter" class="bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white py-2 px-4 rounded-lg">
+                    <option value="10">Show 10 Operations</option>
+                    <option value="5">Show 5 Operations</option>
+                </select>
+                <select id="chartType" class="ml-4 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white py-2 px-4 rounded-lg">
+                    <option value="bar">Bar Chart</option>
+                    <option value="line">Line Chart</option>
+                </select>
+            </div>
+        </div>
+        <div class="stats-card mt-6 p-4">
+            <h3 class="text-lg font-semibold mb-2">Summary Statistics</h3>
+            <p id="totalProfit">Total Profit: 0 USDC</p>
+            <p id="averageProfit">Average Profit per Operation: 0 USDC</p>
+            <p id="maxAmount">Maximum Amount: 0 USDC</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+            <div class="chart-container" id="profitChartContainer">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-lg font-semibold">Profit and Fees Distribution</h3>
+                    <button class="toggle-chart-btn text-gray-600 dark:text-gray-300" data-target="profitChartContainer"><i class="fas fa-chevron-down"></i></button>
+                    <button id="exportProfitChartBtn" class="ml-2 toggle-btn bg-blue-500 text-white py-1 px-2 rounded-lg text-sm"><i class="fas fa-image mr-1"></i> Export PNG</button>
+                </div>
+                <canvas id="profitChart"></canvas>
+            </div>
+            <div class="chart-container" id="growthChartContainer">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-lg font-semibold">Contribution to Total Profit</h3>
+                    <button class="toggle-chart-btn text-gray-600 dark:text-gray-300" data-target="growthChartContainer"><i class="fas fa-chevron-down"></i></button>
+                    <button id="exportGrowthChartBtn" class="ml-2 toggle-btn bg-blue-500 text-white py-1 px-2 rounded-lg text-sm"><i class="fas fa-image mr-1"></i> Export PNG</button>
+                </div>
+                <canvas id="growthChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <h2 id="historyModalTitle" class="text-2xl font-bold mb-4">Calculation History</h2>
+            <div id="historyContent"></div>
+            <button id="closeModal" class="mt-4 bg-red-500 text-white py-2 px-4 rounded-lg">Close</button>
+        </div>
+    </div>
+
+    <script src="script.js" defer></script>
+</body>
+</html>
